@@ -1,20 +1,31 @@
 import {task} from 'gulp';
-import {copySync} from 'fs-extra';
-import {DIST_DEMOAPP, DIST_RELEASE} from '../constants';
-import {sequenceTask, execNodeTask} from '../util/task_helpers';
+import {execNodeTask} from '../util/task_helpers';
 import {join} from 'path';
+import {buildConfig, sequenceTask} from 'material2-build-tools';
 
-const tsconfigFile = join(DIST_DEMOAPP, 'tsconfig-aot.json');
+const {packagesDir} = buildConfig;
 
-/** Builds the demo-app and library. To be able to run NGC, apply the metadata workaround. */
-task('aot:deps', sequenceTask('build:devapp', ':package:release', 'aot:copy-release'));
+/** Path to the demo-app source directory. */
+const demoAppSource = join(packagesDir, 'demo-app');
 
-// As a workaround for https://github.com/angular/angular/issues/12249, we need to
-// copy the Material ESM output inside of the demo-app output.
-task('aot:copy-release', () => copySync(DIST_RELEASE, join(DIST_DEMOAPP, 'material')));
+/** Path to the tsconfig file that builds the AOT files. */
+const tsconfigFile = join(demoAppSource, 'tsconfig-aot.json');
+
+/** Builds the demo-app assets and builds the required release packages. */
+task('aot:deps', sequenceTask(
+  [
+    'cdk:build-release',
+    'material:build-release',
+    'material-experimental:build-release',
+    'material-moment-adapter:build-release'
+  ],
+  // Build the assets after the releases have been built, because the demo-app assets import
+  // SCSS files from the release packages.
+  [':build:devapp:assets', ':build:devapp:scss'],
+));
 
 /** Build the demo-app and a release to confirm that the library is AOT-compatible. */
-task('aot:build', sequenceTask('aot:deps', 'aot:compiler-cli'));
+task('aot:build', sequenceTask('clean', 'aot:deps', 'aot:compiler-cli'));
 
 /** Build the demo-app and a release to confirm that the library is AOT-compatible. */
 task('aot:compiler-cli', execNodeTask(

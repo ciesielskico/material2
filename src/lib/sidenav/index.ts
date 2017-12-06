@@ -1,25 +1,9 @@
-import {NgModule, ModuleWithProviders} from '@angular/core';
-import {CommonModule} from '@angular/common';
-import {CompatibilityModule} from '../core';
-import {A11yModule} from '../core/a11y/index';
-import {OverlayModule} from '../core/overlay/overlay-directives';
-import {MdSidenav, MdSidenavContainer} from './sidenav';
+/**
+ * @license
+ * Copyright Google LLC All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
 
-
-@NgModule({
-  imports: [CommonModule, CompatibilityModule, A11yModule, OverlayModule],
-  exports: [MdSidenavContainer, MdSidenav, CompatibilityModule],
-  declarations: [MdSidenavContainer, MdSidenav],
-})
-export class MdSidenavModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdSidenavModule,
-      providers: []
-    };
-  }
-}
-
-
-export * from './sidenav';
+export * from './public-api';

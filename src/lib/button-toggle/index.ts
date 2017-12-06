@@ -1,33 +1,9 @@
-import {NgModule, ModuleWithProviders} from '@angular/core';
-import {FormsModule} from '@angular/forms';
-import {MdButtonToggleGroup, MdButtonToggleGroupMultiple, MdButtonToggle} from './button-toggle';
-import {
-  UNIQUE_SELECTION_DISPATCHER_PROVIDER,
-  CompatibilityModule,
-  FocusOriginMonitor,
-} from '../core';
+/**
+ * @license
+ * Copyright Google LLC All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
 
-
-@NgModule({
-  imports: [FormsModule, CompatibilityModule],
-  exports: [
-    MdButtonToggleGroup,
-    MdButtonToggleGroupMultiple,
-    MdButtonToggle,
-    CompatibilityModule,
-  ],
-  declarations: [MdButtonToggleGroup, MdButtonToggleGroupMultiple, MdButtonToggle],
-  providers: [UNIQUE_SELECTION_DISPATCHER_PROVIDER, FocusOriginMonitor]
-})
-export class MdButtonToggleModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdButtonToggleModule,
-      providers: []
-    };
-  }
-}
-
-
-export * from './button-toggle';
+export * from './public-api';

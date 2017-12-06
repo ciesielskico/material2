@@ -1,23 +1,9 @@
-import {NgModule, ModuleWithProviders} from '@angular/core';
-import {CommonModule} from '@angular/common';
-import {CompatibilityModule} from '../core/compatibility/compatibility';
-import {MdProgressBar} from './progress-bar';
+/**
+ * @license
+ * Copyright Google LLC All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
 
-
-@NgModule({
-  imports: [CommonModule, CompatibilityModule],
-  exports: [MdProgressBar, CompatibilityModule],
-  declarations: [MdProgressBar],
-})
-export class MdProgressBarModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdProgressBarModule,
-      providers: []
-    };
-  }
-}
-
-
-export * from './progress-bar';
+export * from './public-api';

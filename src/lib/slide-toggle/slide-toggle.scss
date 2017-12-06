@@ -2,7 +2,7 @@
 @import '../core/ripple/ripple';
 @import '../core/style/elevation';
 @import '../core/style/vendor-prefixes';
-@import '../core/a11y/a11y';
+@import '../../cdk/a11y/a11y';
 
 $mat-slide-toggle-thumb-size: 20px !default;
 $mat-slide-toggle-bar-border-radius: 8px !default;
@@ -41,14 +41,6 @@ $mat-slide-toggle-bar-track-width: $mat-slide-toggle-bar-width - $mat-slide-togg
   }
 }
 
-// The content element is responsible for the users content.
-// It will apply the given typography styles and align at the end of the slide-toggle.
-.mat-slide-toggle-content {
-  font-size: $mat-body-font-size-base;
-  font-family: $mat-font-family;
-  font-weight: 500;
-}
-
 // The label element is our root container for the slide-toggle / switch indicator and label text.
 // It has to be a label, to support accessibility for the visual hidden input.
 .mat-slide-toggle-label {
@@ -56,6 +48,7 @@ $mat-slide-toggle-bar-track-width: $mat-slide-toggle-bar-width - $mat-slide-togg
   flex: 1;
   flex-direction: row;
   align-items: center;
+  height: inherit;
 
   cursor: pointer;
 }
@@ -82,6 +75,11 @@ $mat-slide-toggle-bar-track-width: $mat-slide-toggle-bar-width - $mat-slide-togg
   }
 }
 
+.mat-slide-toggle-bar-no-side-margin {
+  margin-left: 0;
+  margin-right: 0;
+}
+
 // The thumb container is responsible for the dragging functionality.
 // The container includes the visual thumb and the ripple container element.
 .mat-slide-toggle-thumb-container {
@@ -103,7 +101,9 @@ $mat-slide-toggle-bar-track-width: $mat-slide-toggle-bar-width - $mat-slide-togg
 
   // Once the thumb container is being dragged around, we remove the transition duration to
   // make the drag feeling fast and not delayed.
-  &.mat-dragging {
+  &.mat-dragging, &:active {
+    @include cursor-grabbing;
+
     transition-duration: 0ms;
   }
 }
@@ -161,7 +161,6 @@ $mat-slide-toggle-bar-track-width: $mat-slide-toggle-bar-width - $mat-slide-togg
   left: $mat-slide-toggle-thumb-size / 2 - $mat-slide-toggle-ripple-radius;
   height: $mat-slide-toggle-ripple-radius * 2;
   width: $mat-slide-toggle-ripple-radius * 2;
-  border-radius: 50%;
   z-index: 1;
   pointer-events: none;
 }

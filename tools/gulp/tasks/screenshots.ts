@@ -1,104 +1,233 @@
 import {task} from 'gulp';
 import {readdirSync, statSync, existsSync, mkdirp, readFileSync, writeFileSync} from 'fs-extra';
-import * as path from 'path';
-import * as admin from 'firebase-admin';
-import * as firebase from 'firebase';
-import {
-  openScreenshotsBucket,
-  openFirebaseScreenshotsDatabase,
-  connectFirebaseScreenshots} from '../util/firebase';
-import {setGithubStatus} from '../util/github';
-import {isTravisPushBuild} from '../util/travis-ci';
+import {openScreenshotsBucket, connectFirebaseScreenshots} from '../util/firebase';
+import {isTravisMasterBuild} from '../util/travis-ci';
 
+import * as path from 'path';
+import * as firebaseAdmin from 'firebase-admin';
+
+// Firebase provides TypeScript definitions that are only accessible from specific namespaces.
+// This means that those types are really long and it's nearly impossible to write a function that
+// doesn't exceed the maximum columns. Import the types from the namespace so they are shorter.
+import Database = firebaseAdmin.database.Database;
+import DataSnapshot = firebaseAdmin.database.DataSnapshot;
+
+// This import lacks of type definitions.
 const imageDiff = require('image-diff');
 
-// Directory to which untrusted screenshot results are temporarily written
-//   (without authentication required) before they are verified and copied to
-//   the final storage location.
-const TEMP_FOLDER = 'untrustedInbox';
+/** Travis secure token that will be used by the Screenshot functions to verify the identity. */
+const travisSecureToken = getSecureToken();
+
+/** Git SHA of the current Pull Request being checked by Travis. */
+const pullRequestSha = process.env['TRAVIS_PULL_REQUEST_SHA'];
+
 const SCREENSHOT_DIR = './screenshots';
+const LOCAL_GOLDENS = path.join(SCREENSHOT_DIR, `golds`);
+const LOCAL_DIFFS = path.join(SCREENSHOT_DIR, `diff`);
+
+// Directory to which untrusted screenshot results are temporarily written
+// (without authentication required) before they are verified and copied to
+// the final storage location.
+const TEMP_FOLDER = 'untrustedInbox';
 const FIREBASE_REPORT = `${TEMP_FOLDER}/screenshot/reports`;
 const FIREBASE_IMAGE = `${TEMP_FOLDER}/screenshot/images`;
-const FIREBASE_FILELIST = 'screenshot/filenames';
+const FIREBASE_DATA_GOLDENS = `screenshot/goldens`;
+const FIREBASE_STORAGE_GOLDENS = 'goldens';
 
 /** Task which upload screenshots generated from e2e test. */
 task('screenshots', () => {
-  let prNumber = process.env['TRAVIS_PULL_REQUEST'];
-  if (isTravisPushBuild()) {
-    // Only update golds and filenames for build
-    let database = openFirebaseScreenshotsDatabase();
-    uploadScreenshots()
-      .then(() => setScreenFilenames(database))
-      .then(() => database.goOffline(), () => database.goOffline());
-  } else if (prNumber) {
-    let firebaseApp = connectFirebaseScreenshots();
-    let database = firebaseApp.database();
+  const prNumber = process.env['TRAVIS_PULL_REQUEST']!;
 
-    return getScreenshotFiles(database)
-      .then(() => downloadAllGoldsAndCompare(database, prNumber))
-      .then((results: boolean) => updateResult(database, prNumber, results))
-      .then((result: boolean) => updateGithubStatus(prNumber, result))
-      .then(() => uploadScreenshotsData(database, 'diff', prNumber))
-      .then(() => uploadScreenshotsData(database, 'test', prNumber))
-      .then(() => updateTravis(database, prNumber))
-      .then(() => setScreenFilenames(database, prNumber))
-      .then(() => database.goOffline(), () => database.goOffline());
+  if (isTravisMasterBuild()) {
+    // Only update goldens for master build
+    return uploadGoldenScreenshots();
+  } else if (prNumber) {
+    const firebaseApp = connectFirebaseScreenshots();
+    const database = firebaseApp.database();
+    let lastActionTime = Date.now();
+
+    console.log(`  Starting screenshots task with results from e2e task...`);
+
+    return uploadTravisJobInfo(database, prNumber)
+      .then(() => {
+        console.log(`  Downloading screenshot golds from Firebase...`);
+        lastActionTime = Date.now();
+        return downloadGoldScreenshotFiles(database);
+      })
+      .then(() => {
+        console.log(`  Downloading golds done (took ${Date.now() - lastActionTime}ms)`);
+        console.log(`  Comparing screenshots golds to test result screenshots...`);
+        lastActionTime = Date.now();
+        return compareScreenshotFiles(database, prNumber);
+      })
+      .then(passedAll => {
+        console.log(`  Comparison done (took ${Date.now() - lastActionTime}ms)`);
+        console.log(`  Uploading screenshot diff results to Firebase and GitHub...`);
+        lastActionTime = Date.now();
+        return Promise.all([
+          setPullRequestResult(database, prNumber, passedAll),
+          uploadScreenshotsData(database, 'diff', prNumber),
+          uploadScreenshotsData(database, 'test', prNumber),
+        ]);
+      })
+      .then(() => {
+        console.log(`  Uploading results done (took ${Date.now() - lastActionTime}ms)`);
+        firebaseApp.delete();
+      })
+      .catch((err: any) => {
+        console.error(`  Screenshot tests encountered an error!`);
+        console.error(err);
+        firebaseApp.delete();
+      });
   }
 });
 
-function updateFileResult(database: firebase.database.Database, prNumber: string,
-                          filenameKey: string, result: boolean) {
-  return getPullRequestRef(database, prNumber).child('results').child(filenameKey).set(result);
+/** Sets the screenshot diff result for a given file of a Pull Request. */
+function setFileResult(database: Database, prNumber: string, fileName: string, result: boolean) {
+  return getPullRequestRef(database, prNumber).child('results').child(fileName).set(result);
 }
 
-function updateResult(database: firebase.database.Database, prNumber: string, result: boolean) {
-  return getPullRequestRef(database, prNumber).child('result')
-    .child(process.env['TRAVIS_PULL_REQUEST_SHA']).set(result).then(() => result);
+/** Sets the full diff result for the current Pull Request that runs inside of Travis. */
+function setPullRequestResult(database: Database, prNumber: string, result: boolean) {
+  return getPullRequestRef(database, prNumber).child('result').child(pullRequestSha).set(result);
 }
 
-function getPullRequestRef(database: firebase.database.Database | admin.database.Database,
-                           prNumber: string) {
-  let secureToken = getSecureToken();
-  return database.ref(FIREBASE_REPORT).child(prNumber).child(secureToken);
+/** Returns the Firebase Reference that contains all data related to the specified PR. */
+function getPullRequestRef(database: Database, prNumber: string) {
+  return database.ref(FIREBASE_REPORT).child(prNumber).child(travisSecureToken);
 }
 
-function updateTravis(database: firebase.database.Database,
-                      prNumber: string) {
+/** Uploads necessary Travis CI job variables that will be used in the Screenshot Panel. */
+function uploadTravisJobInfo(database: Database, prNumber: string) {
   return getPullRequestRef(database, prNumber).update({
-    commit: process.env['TRAVIS_COMMIT'],
     sha: process.env['TRAVIS_PULL_REQUEST_SHA'],
     travis: process.env['TRAVIS_JOB_ID'],
   });
 }
 
-/** Get a list of filenames from firebase database. */
-function getScreenshotFiles(database: firebase.database.Database) {
-  mkdirp(path.join(SCREENSHOT_DIR, `golds`));
-  mkdirp(path.join(SCREENSHOT_DIR, `diff`));
+/** Downloads all golden screenshot files and stores them in the local file system. */
+function downloadGoldScreenshotFiles(database: Database) {
+  // Create the directory that will contain all goldens if it's not present yet.
+  mkdirp(LOCAL_GOLDENS);
 
-  return database.ref('screenshot/goldens').once('value')
-      .then((snapshot: firebase.database.DataSnapshot) => {
-    let counter = 0;
-    snapshot.forEach((childSnapshot: firebase.database.DataSnapshot) => {
-      let key = childSnapshot.key;
-      let binaryData = new Buffer(childSnapshot.val(), 'base64').toString('binary');
-      writeFileSync(`${SCREENSHOT_DIR}/golds/${key}.screenshot.png`, binaryData, 'binary');
-      counter++;
-      if (counter == snapshot.numChildren()) {
-        return true;
-      }
+  return database.ref(FIREBASE_DATA_GOLDENS).once('value').then(snapshot => {
+    snapshot.forEach((childSnapshot: DataSnapshot) => {
+      const screenshotName = childSnapshot.key;
+      const binaryData = new Buffer(childSnapshot.val(), 'base64').toString('binary');
+
+      writeFileSync(`${LOCAL_GOLDENS}/${screenshotName}.screenshot.png`, binaryData, 'binary');
     });
-  }).catch((error: any) => console.log(error));
+  });
 }
 
+/** Extracts the name of a given screenshot file by removing the file extension. */
 function extractScreenshotName(fileName: string) {
   return path.basename(fileName, '.screenshot.png');
 }
 
-function getLocalScreenshotFiles(dir: string): string[] {
-  return readdirSync(dir)
-    .filter((fileName: string) => !statSync(path.join(SCREENSHOT_DIR, fileName)).isDirectory())
+/** Gets a list of files inside of a directory that end with `.screenshot.png`. */
+function getLocalScreenshotFiles(directory: string): string[] {
+  return readdirSync(directory)
+    .filter((fileName: string) => !statSync(path.join(directory, fileName)).isDirectory())
     .filter((fileName: string) => fileName.endsWith('.screenshot.png'));
+}
+
+/**
+ * Upload screenshots to a Firebase Database path that will then upload the file to a Google
+ * Cloud Storage bucket if the Auth token is valid.
+ * @param database Firebase database instance.
+ * @param prNumber The key used in firebase. Here it is the PR number.
+ * @param mode Upload mode. This can be either 'test' or 'diff'.
+ *  - If the images are the test results, mode should be 'test'.
+ *  - If the images are the diff images generated, mode should be 'diff'.
+ */
+function uploadScreenshotsData(database: Database, mode: 'test' | 'diff', prNumber: string) {
+  const localDir = mode == 'diff' ? path.join(SCREENSHOT_DIR, 'diff') : SCREENSHOT_DIR;
+
+  return Promise.all(getLocalScreenshotFiles(localDir).map(file => {
+    const filePath = path.join(localDir, file);
+    const fileName = extractScreenshotName(filePath);
+    const binaryContent = readFileSync(filePath);
+
+    // Upload the Buffer of the screenshot image to a Firebase Database reference that will
+    // then upload the screenshot file to a Google Cloud Storage bucket if the JWT token is valid.
+    return database.ref(FIREBASE_IMAGE)
+      .child(prNumber).child(travisSecureToken).child(mode).child(fileName)
+      .set(binaryContent);
+  }));
+}
+
+/** Concurrently compares every golden screenshot with the newly taken screenshots. */
+function compareScreenshotFiles(database: Database, prNumber: string) {
+  const fileNames = getLocalScreenshotFiles(LOCAL_GOLDENS);
+  const compares = fileNames.map(fileName => compareScreenshotFile(fileName, database, prNumber));
+
+  // Wait for all compares to finish and then return a Promise that resolves with a boolean that
+  // shows whether the tests passed or not.
+  return Promise.all(compares).then((results: boolean[]) => results.every(Boolean));
+}
+
+/** Compare the specified screenshot file with the golden file from Firebase. */
+function compareScreenshotFile(fileName: string, database: Database, prNumber: string) {
+  const goldScreenshotPath = path.join(LOCAL_GOLDENS, fileName);
+  const localScreenshotPath = path.join(SCREENSHOT_DIR, fileName);
+  const diffScreenshotPath = path.join(LOCAL_DIFFS, fileName);
+
+  const screenshotName = extractScreenshotName(fileName);
+
+  if (existsSync(goldScreenshotPath) && existsSync(localScreenshotPath)) {
+    return compareImage(localScreenshotPath, goldScreenshotPath, diffScreenshotPath)
+      .then(result => {
+        // Set the screenshot diff result in Firebase and afterwards pass the result boolean
+        // to the Promise chain again.
+        return setFileResult(database, prNumber, screenshotName, result).then(() => result);
+      });
+  } else {
+    return setFileResult(database, prNumber, screenshotName, false).then(() => false);
+  }
+}
+
+/** Uploads golden screenshots to the Google Cloud Storage bucket for the screenshots. */
+async function uploadGoldenScreenshots() {
+  const bucket = openScreenshotsBucket();
+  const localScreenshots = getLocalScreenshotFiles(SCREENSHOT_DIR);
+  const storageGoldenFiles = (await bucket.getFiles({prefix: FIREBASE_STORAGE_GOLDENS}))[0];
+
+  // Only delete golden images that are outdated to avoid collisions with other screenshot diffs.
+  // Deleting every golden screenshot may also work, but will likely cause flakiness if multiple
+  // screenshot tasks run.
+  const deleteOutdatedGoldenFiles = Promise.all(storageGoldenFiles
+    .filter((file: any) => !localScreenshots.includes(path.basename(file.name)))
+    .map((file: any) => file.delete()));
+
+  const uploadNewGoldenImages = Promise.all(localScreenshots.map(fileName => {
+    const filePath = path.join(SCREENSHOT_DIR, fileName);
+    const storageDestination = `${FIREBASE_STORAGE_GOLDENS}/${fileName}`;
+
+    return bucket.upload(filePath, { destination: storageDestination });
+  }));
+
+  await Promise.all([deleteOutdatedGoldenFiles, uploadNewGoldenImages]);
+}
+
+/**
+ * Compares two images using the Node package image-diff. A difference screenshot will be created.
+ * The returned promise will resolve with a boolean that will be true if the images are equal.
+ */
+function compareImage(actualPath: string, goldenPath: string, diffPath: string): Promise<boolean> {
+  return new Promise(resolve => {
+    imageDiff({
+      actualImage: actualPath,
+      expectedImage: goldenPath,
+      diffImage: diffPath,
+    }, (err: any, imagesAreEqual: boolean) => {
+      if (err) {
+        throw err;
+      }
+
+      resolve(imagesAreEqual);
+    });
+  });
 }
 
 /**
@@ -112,101 +241,5 @@ function getLocalScreenshotFiles(dir: string): string[] {
  * secure token, the data is moved to /$path/$data in database.
  */
 function getSecureToken() {
-  return process.env['FIREBASE_ACCESS_TOKEN'].replace(/[.]/g, '/');
-}
-
-/**
- * Upload screenshots to google cloud storage.
- * @param prNumber - The key used in firebase. Here it is the PR number.
- * @param mode - Can be 'test' or 'diff' .
- *   If the images are the test results, mode should be 'test'.
- *   If the images are the diff images generated, mode should be 'diff'.
- */
-function uploadScreenshotsData(database: firebase.database.Database,
-                               mode: 'test' | 'diff', prNumber: string) {
-  let localDir = mode == 'diff' ? path.join(SCREENSHOT_DIR, 'diff') : SCREENSHOT_DIR;
-  let promises = getLocalScreenshotFiles(localDir).map((file: string) => {
-    let fileName = path.join(localDir, file);
-    let filenameKey = extractScreenshotName(fileName);
-    let secureToken = getSecureToken();
-    let data = readFileSync(fileName);
-    return database.ref(FIREBASE_IMAGE).child(prNumber)
-      .child(secureToken).child(mode).child(filenameKey).set(data);
-  });
-  return Promise.all(promises);
-}
-
-
-/** Download golds screenshots. */
-function downloadAllGoldsAndCompare(database: firebase.database.Database, prNumber: string) {
-
-  let filenames = getLocalScreenshotFiles(path.join(SCREENSHOT_DIR, `golds`));
-
-  return Promise.all(filenames.map((filename: string) => {
-    return diffScreenshot(filename, database, prNumber);
-  })).then((results: boolean[]) => results.every((value: boolean) => value == true));
-}
-
-function diffScreenshot(filename: string, database: firebase.database.Database,
-                        prNumber: string) {
-  // TODO(tinayuangao): Run the downloads and diffs in parallel.
-  filename = path.basename(filename);
-  let goldUrl = path.join(SCREENSHOT_DIR, `golds`, filename);
-  let pullRequestUrl = path.join(SCREENSHOT_DIR, filename);
-  let diffUrl = path.join(SCREENSHOT_DIR, `diff`, filename);
-  let filenameKey = extractScreenshotName(filename);
-
-  if (existsSync(goldUrl) && existsSync(pullRequestUrl)) {
-    return new Promise((resolve: any, reject: any) => {
-      imageDiff({
-        actualImage: pullRequestUrl,
-        expectedImage: goldUrl,
-        diffImage: diffUrl,
-      }, (err: any, imagesAreSame: boolean) => {
-        if (err) {
-          console.log(err);
-          imagesAreSame = false;
-          reject(err);
-        }
-        resolve(imagesAreSame);
-        return updateFileResult(database, prNumber, filenameKey, imagesAreSame);
-      });
-    });
-  } else {
-    return updateFileResult(database, prNumber, filenameKey, false).then(() => false);
-  }
-}
-
-/**
- * Upload a list of filenames to firebase database as gold.
- * This is necessary for control panel since google-cloud is not available to client side.
- */
-function setScreenFilenames(database: admin.database.Database | firebase.database.Database,
-                            prNumber?: string) {
-  let filenames: string[] = getLocalScreenshotFiles(SCREENSHOT_DIR);
-  let filelistDatabase = prNumber ?
-    getPullRequestRef(database, prNumber).child('filenames') :
-    database.ref(FIREBASE_FILELIST);
-  return filelistDatabase.set(filenames);
-}
-
-/** Updates the Github Status of the given Pullrequest. */
-function updateGithubStatus(prNumber: number, result: boolean) {
-  setGithubStatus(process.env['TRAVIS_PULL_REQUEST_SHA'], {
-    result: result,
-    name: 'Screenshot Tests',
-    description: `Screenshot Tests ${result ? 'passed' : 'failed'})`,
-    url: `http://material2-screenshots.firebaseapp.com/${prNumber}`
-  });
-}
-
-/** Upload screenshots to google cloud storage. */
-function uploadScreenshots() {
-  let bucket = openScreenshotsBucket();
-  let promises = getLocalScreenshotFiles(SCREENSHOT_DIR).map((file: string) => {
-    let fileName = path.join(SCREENSHOT_DIR, file);
-    let destination = `golds/${file}`;
-    return bucket.upload(fileName, { destination: destination });
-  });
-  return Promise.all(promises);
+  return (process.env['FIREBASE_ACCESS_TOKEN'] || '').replace(/[.]/g, '/');
 }

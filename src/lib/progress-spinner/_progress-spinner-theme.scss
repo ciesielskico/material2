@@ -8,16 +8,18 @@
   $warn: map-get($theme, warn);
 
   .mat-progress-spinner, .mat-spinner {
-    path {
-      stroke: mat-color($primary, 600);
+    circle {
+      stroke: mat-color($primary);
     }
 
-    &.mat-accent path {
-      stroke: mat-color($accent, 600);
+    &.mat-accent circle {
+      stroke: mat-color($accent);
     }
 
-    &.mat-warn path {
-      stroke: mat-color($warn, 600);
+    &.mat-warn circle {
+      stroke: mat-color($warn);
     }
   }
 }
+
+@mixin mat-progress-spinner-typography($config) { }

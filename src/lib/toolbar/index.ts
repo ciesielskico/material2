@@ -1,22 +1,9 @@
-import {NgModule, ModuleWithProviders} from '@angular/core';
-import {CompatibilityModule} from '../core';
-import {MdToolbar, MdToolbarRow} from './toolbar';
+/**
+ * @license
+ * Copyright Google LLC All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
 
-
-@NgModule({
-  imports: [CompatibilityModule],
-  exports: [MdToolbar, MdToolbarRow, CompatibilityModule],
-  declarations: [MdToolbar, MdToolbarRow],
-})
-export class MdToolbarModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdToolbarModule,
-      providers: []
-    };
-  }
-}
-
-
-export * from './toolbar';
+export * from './public-api';

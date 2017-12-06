@@ -7,7 +7,7 @@
 /screenshots
 
 # dependencies
-/node_modules
+node_modules
 /bower_components
 
 # Dart
@@ -34,3 +34,4 @@
 npm-debug.log
 testem.log
 /.chrome
+/.git

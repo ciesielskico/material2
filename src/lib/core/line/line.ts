@@ -1,33 +1,37 @@
+/**
+ * @license
+ * Copyright Google LLC All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
+
 import {
-    NgModule,
-    Directive,
-    Renderer,
-    ElementRef,
-    QueryList
+  NgModule,
+  Directive,
+  ElementRef,
+  QueryList,
 } from '@angular/core';
-import {CompatibilityModule} from '../compatibility/compatibility';
+import {MatCommonModule} from '../common-behaviors/common-module';
 
 
 /**
  * Shared directive to count lines inside a text area, such as a list item.
- * Line elements can be extracted with a @ContentChildren(MdLine) query, then
+ * Line elements can be extracted with a @ContentChildren(MatLine) query, then
  * counted by checking the query list's length.
  */
 @Directive({
-  selector: '[md-line], [mat-line]',
-  host: {
-    '[class.mat-line]': 'true'
-  }
+  selector: '[mat-line], [matLine]',
+  host: {'class': 'mat-line'}
 })
-export class MdLine {}
+export class MatLine {}
 
 /**
  * Helper that takes a query list of lines and sets the correct class on the host.
  * @docs-private
  */
-export class MdLineSetter {
-  constructor(private _lines: QueryList<MdLine>, private _renderer: Renderer,
-              private _element: ElementRef) {
+export class MatLineSetter {
+  constructor(private _lines: QueryList<MatLine>, private _element: ElementRef) {
     this._setLineClass(this._lines.length);
 
     this._lines.changes.subscribe(() => {
@@ -50,15 +54,19 @@ export class MdLineSetter {
     this._setClass('mat-multi-line', false);
   }
 
-  private _setClass(className: string, bool: boolean): void {
-    this._renderer.setElementClass(this._element.nativeElement, className, bool);
+  private _setClass(className: string, isAdd: boolean): void {
+    if (isAdd) {
+      this._element.nativeElement.classList.add(className);
+    } else {
+      this._element.nativeElement.classList.remove(className);
+    }
   }
 
 }
 
 @NgModule({
-  imports: [CompatibilityModule],
-  exports: [MdLine, CompatibilityModule],
-  declarations: [MdLine],
+  imports: [MatCommonModule],
+  exports: [MatLine, MatCommonModule],
+  declarations: [MatLine],
 })
-export class MdLineModule { }
+export class MatLineModule { }

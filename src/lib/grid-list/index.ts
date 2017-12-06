@@ -1,42 +1,9 @@
-import {NgModule, ModuleWithProviders} from '@angular/core';
-import {MdLineModule, CompatibilityModule} from '../core';
-import {
-  MdGridTile, MdGridTileText, MdGridTileFooterCssMatStyler,
-  MdGridTileHeaderCssMatStyler, MdGridAvatarCssMatStyler
-} from './grid-tile';
-import {MdGridList} from './grid-list';
+/**
+ * @license
+ * Copyright Google LLC All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
 
-
-@NgModule({
-  imports: [MdLineModule, CompatibilityModule],
-  exports: [
-    MdGridList,
-    MdGridTile,
-    MdGridTileText,
-    MdLineModule,
-    CompatibilityModule,
-    MdGridTileHeaderCssMatStyler,
-    MdGridTileFooterCssMatStyler,
-    MdGridAvatarCssMatStyler
-  ],
-  declarations: [
-    MdGridList,
-    MdGridTile,
-    MdGridTileText,
-    MdGridTileHeaderCssMatStyler,
-    MdGridTileFooterCssMatStyler,
-    MdGridAvatarCssMatStyler
-  ],
-})
-export class MdGridListModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdGridListModule,
-      providers: []
-    };
-  }
-}
-
-
-export * from './grid-list';
+export * from './public-api';

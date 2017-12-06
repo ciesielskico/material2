@@ -1,36 +1,38 @@
 import {TestBed, ComponentFixture, fakeAsync, tick, inject} from '@angular/core/testing';
 import {Component, ViewChild} from '@angular/core';
-import {ViewportRuler} from '../overlay/position/viewport-ruler';
+import {Platform} from '@angular/cdk/platform';
+import {dispatchMouseEvent, dispatchTouchEvent} from '@angular/cdk/testing';
 import {RIPPLE_FADE_OUT_DURATION, RIPPLE_FADE_IN_DURATION} from './ripple-renderer';
-import {dispatchMouseEvent} from '../testing/dispatch-events';
 import {
-  MdRipple, MdRippleModule, MD_RIPPLE_GLOBAL_OPTIONS, RippleState, RippleGlobalOptions
+  MatRipple, MatRippleModule, MAT_RIPPLE_GLOBAL_OPTIONS, RippleState, RippleGlobalOptions
 } from './index';
 
-/** Extracts the numeric value of a pixel size string like '123px'.  */
-const pxStringToFloat = (s: string) => {
-  return parseFloat(s.replace('px', ''));
-};
 
-describe('MdRipple', () => {
+describe('MatRipple', () => {
   let fixture: ComponentFixture<any>;
   let rippleTarget: HTMLElement;
-  let originalBodyMargin: string;
-  let viewportRuler: ViewportRuler;
+  let originalBodyMargin: string | null;
+  let platform: Platform;
+
+  /** Extracts the numeric value of a pixel size string like '123px'.  */
+  const pxStringToFloat = s => parseFloat(s) || 0;
+  const startingWindowWidth = window.innerWidth;
+  const startingWindowHeight = window.innerHeight;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
-      imports: [MdRippleModule],
+      imports: [MatRippleModule],
       declarations: [
         BasicRippleContainer,
         RippleContainerWithInputBindings,
+        RippleContainerWithoutBindings,
         RippleContainerWithNgIf,
       ],
     });
   });
 
-  beforeEach(inject([ViewportRuler], (ruler: ViewportRuler) => {
-    viewportRuler = ruler;
+  beforeEach(inject([Platform], (p: Platform) => {
+    platform = p;
 
     // Set body margin to 0 during tests so it doesn't mess up position calculations.
     originalBodyMargin = document.body.style.margin;
@@ -42,7 +44,7 @@ describe('MdRipple', () => {
   });
 
   describe('basic ripple', () => {
-    let rippleDirective: MdRipple;
+    let rippleDirective: MatRipple;
 
     const TARGET_HEIGHT = 200;
     const TARGET_WIDTH = 300;
@@ -53,6 +55,41 @@ describe('MdRipple', () => {
 
       rippleTarget = fixture.nativeElement.querySelector('[mat-ripple]');
       rippleDirective = fixture.componentInstance.ripple;
+    });
+
+    it('sizes ripple to cover element', () => {
+      // This test is consistently flaky on iOS (vs. Safari on desktop and all other browsers).
+      // Temporarily skip this test on iOS until we can determine the source of the flakiness.
+      // TODO(jelbourn): determine the source of flakiness here
+      if (platform.IOS) {
+        return;
+      }
+
+      let elementRect = rippleTarget.getBoundingClientRect();
+
+      // Dispatch a ripple at the following relative coordinates (X: 50| Y: 75)
+      dispatchMouseEvent(rippleTarget, 'mousedown', 50, 75);
+      dispatchMouseEvent(rippleTarget, 'mouseup');
+
+      // Calculate distance from the click to farthest edge of the ripple target.
+      let maxDistanceX = TARGET_WIDTH - 50;
+      let maxDistanceY = TARGET_HEIGHT - 75;
+
+      // At this point the foreground ripple should be created with a div centered at the click
+      // location, and large enough to reach the furthest corner, which is 250px to the right
+      // and 125px down relative to the click position.
+      let expectedRadius = Math.sqrt(maxDistanceX * maxDistanceX + maxDistanceY * maxDistanceY);
+      let expectedLeft = elementRect.left + 50 - expectedRadius;
+      let expectedTop = elementRect.top + 75 - expectedRadius;
+
+      let ripple = rippleTarget.querySelector('.mat-ripple-element') as HTMLElement;
+
+      // Note: getBoundingClientRect won't work because there's a transform applied to make the
+      // ripple start out tiny.
+      expect(pxStringToFloat(ripple.style.left)).toBeCloseTo(expectedLeft, 1);
+      expect(pxStringToFloat(ripple.style.top)).toBeCloseTo(expectedTop, 1);
+      expect(pxStringToFloat(ripple.style.width)).toBeCloseTo(2 * expectedRadius, 1);
+      expect(pxStringToFloat(ripple.style.height)).toBeCloseTo(2 * expectedRadius, 1);
     });
 
     it('creates ripple on mousedown', () => {
@@ -66,6 +103,34 @@ describe('MdRipple', () => {
 
       expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(2);
     });
+
+    it('should launch ripples on touchstart', fakeAsync(() => {
+      dispatchTouchEvent(rippleTarget, 'touchstart');
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+      tick(RIPPLE_FADE_IN_DURATION);
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+      dispatchTouchEvent(rippleTarget, 'touchend');
+
+      tick(RIPPLE_FADE_OUT_DURATION);
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+    }));
+
+    it('should ignore synthetic mouse events after touchstart', () => fakeAsync(() => {
+      dispatchTouchEvent(rippleTarget, 'touchstart');
+      dispatchTouchEvent(rippleTarget, 'mousedown');
+
+      tick(RIPPLE_FADE_IN_DURATION);
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(1);
+
+      dispatchTouchEvent(rippleTarget, 'touchend');
+
+      tick(RIPPLE_FADE_OUT_DURATION);
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+    }));
 
     it('removes ripple after timeout', fakeAsync(() => {
       dispatchMouseEvent(rippleTarget, 'mousedown');
@@ -132,38 +197,11 @@ describe('MdRipple', () => {
       let rippleElement = rippleTarget.querySelector('.mat-ripple-element') as HTMLElement;
 
       expect(rippleElement).toBeTruthy();
-      expect(parseFloat(rippleElement.style.left)).toBeCloseTo(TARGET_WIDTH / 2 - radius, 1);
-      expect(parseFloat(rippleElement.style.top)).toBeCloseTo(TARGET_HEIGHT / 2 - radius, 1);
+      expect(parseFloat(rippleElement.style.left as string))
+          .toBeCloseTo(TARGET_WIDTH / 2 - radius, 1);
+      expect(parseFloat(rippleElement.style.top as string))
+          .toBeCloseTo(TARGET_HEIGHT / 2 - radius, 1);
     });
-
-    it('sizes ripple to cover element', () => {
-      let elementRect = rippleTarget.getBoundingClientRect();
-
-      // Dispatch a ripple at the following relative coordinates (X: 50| Y: 75)
-      dispatchMouseEvent(rippleTarget, 'mousedown', 50, 75);
-      dispatchMouseEvent(rippleTarget, 'mouseup');
-
-      // Calculate distance from the click to farthest edge of the ripple target.
-      let maxDistanceX = TARGET_WIDTH - 50;
-      let maxDistanceY = TARGET_HEIGHT - 75;
-
-      // At this point the foreground ripple should be created with a div centered at the click
-      // location, and large enough to reach the furthest corner, which is 250px to the right
-      // and 125px down relative to the click position.
-      let expectedRadius = Math.sqrt(maxDistanceX * maxDistanceX + maxDistanceY * maxDistanceY);
-      let expectedLeft = elementRect.left + 50 - expectedRadius;
-      let expectedTop = elementRect.top + 75 - expectedRadius;
-
-      let ripple = rippleTarget.querySelector('.mat-ripple-element') as HTMLElement;
-
-      // Note: getBoundingClientRect won't work because there's a transform applied to make the
-      // ripple start out tiny.
-      expect(pxStringToFloat(ripple.style.left)).toBeCloseTo(expectedLeft, 1);
-      expect(pxStringToFloat(ripple.style.top)).toBeCloseTo(expectedTop, 1);
-      expect(pxStringToFloat(ripple.style.width)).toBeCloseTo(2 * expectedRadius, 1);
-      expect(pxStringToFloat(ripple.style.height)).toBeCloseTo(2 * expectedRadius, 1);
-    });
-
 
     it('cleans up the event handlers when the container gets destroyed', () => {
       fixture = TestBed.createComponent(RippleContainerWithNgIf);
@@ -182,7 +220,7 @@ describe('MdRipple', () => {
 
     it('does not run events inside the NgZone', () => {
       const spy = jasmine.createSpy('zone unstable callback');
-      const subscription = fixture.ngZone.onUnstable.subscribe(spy);
+      const subscription = fixture.ngZone!.onUnstable.subscribe(spy);
 
       dispatchMouseEvent(rippleTarget, 'mousedown');
       dispatchMouseEvent(rippleTarget, 'mouseup');
@@ -192,9 +230,6 @@ describe('MdRipple', () => {
     });
 
     describe('when page is scrolled', () => {
-      const startingWindowWidth = window.innerWidth;
-      const startingWindowHeight = window.innerHeight;
-
       let veryLargeElement: HTMLDivElement = document.createElement('div');
       let pageScrollTop = 500;
       let pageScrollLeft = 500;
@@ -214,9 +249,6 @@ describe('MdRipple', () => {
 
         // Mobile safari
         window.scrollTo(pageScrollLeft, pageScrollTop);
-        // Force an update of the cached viewport geometries because IE11 emits the
-        // scroll event later.
-        viewportRuler._cacheViewportGeometry();
       });
 
       afterEach(() => {
@@ -230,9 +262,6 @@ describe('MdRipple', () => {
 
         // Mobile safari
         window.scrollTo(0, 0);
-        // Force an update of the cached viewport geometries because IE11 emits the
-        // scroll event later.
-        viewportRuler._cacheViewportGeometry();
       });
 
       it('create ripple with correct position', () => {
@@ -275,7 +304,7 @@ describe('MdRipple', () => {
   });
 
   describe('manual ripples', () => {
-    let rippleDirective: MdRipple;
+    let rippleDirective: MatRipple;
 
     beforeEach(() => {
       fixture = TestBed.createComponent(BasicRippleContainer);
@@ -349,24 +378,39 @@ describe('MdRipple', () => {
   });
 
   describe('global ripple options', () => {
-    let rippleDirective: MdRipple;
+    let rippleDirective: MatRipple;
 
-    function createTestComponent(rippleConfig: RippleGlobalOptions) {
+    function createTestComponent(rippleConfig: RippleGlobalOptions,
+                                 testComponent: any = BasicRippleContainer) {
       // Reset the previously configured testing module to be able set new providers.
       // The testing module has been initialized in the root describe group for the ripples.
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
-        imports: [MdRippleModule],
-        declarations: [BasicRippleContainer],
-        providers: [{ provide: MD_RIPPLE_GLOBAL_OPTIONS, useValue: rippleConfig }]
+        imports: [MatRippleModule],
+        declarations: [testComponent],
+        providers: [{ provide: MAT_RIPPLE_GLOBAL_OPTIONS, useValue: rippleConfig }]
       });
 
-      fixture = TestBed.createComponent(BasicRippleContainer);
+      fixture = TestBed.createComponent(testComponent);
       fixture.detectChanges();
 
       rippleTarget = fixture.nativeElement.querySelector('[mat-ripple]');
       rippleDirective = fixture.componentInstance.ripple;
     }
+
+    it('should work without having any binding set', () => {
+      createTestComponent({ disabled: true }, RippleContainerWithoutBindings);
+
+      dispatchMouseEvent(rippleTarget, 'mousedown');
+      dispatchMouseEvent(rippleTarget, 'mouseup');
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+
+      dispatchMouseEvent(rippleTarget, 'mousedown');
+      dispatchMouseEvent(rippleTarget, 'mouseup');
+
+      expect(rippleTarget.querySelectorAll('.mat-ripple-element').length).toBe(0);
+    });
 
     it('when disabled should not show any ripples on mousedown', () => {
       createTestComponent({ disabled: true });
@@ -431,7 +475,7 @@ describe('MdRipple', () => {
 
   describe('configuring behavior', () => {
     let controller: RippleContainerWithInputBindings;
-    let rippleComponent: MdRipple;
+    let rippleComponent: MatRipple;
 
     beforeEach(() => {
       fixture = TestBed.createComponent(RippleContainerWithInputBindings);
@@ -451,7 +495,7 @@ describe('MdRipple', () => {
       dispatchMouseEvent(rippleTarget, 'mousedown');
       dispatchMouseEvent(rippleTarget, 'mouseup');
 
-      let ripple = rippleTarget.querySelector('.mat-ripple-element');
+      let ripple = rippleTarget.querySelector('.mat-ripple-element')!;
       expect(window.getComputedStyle(ripple).backgroundColor).toBe(backgroundColor);
     });
 
@@ -545,41 +589,46 @@ describe('MdRipple', () => {
 
 @Component({
   template: `
-    <div id="container" #ripple="mdRipple" mat-ripple [mdRippleSpeedFactor]="0"
+    <div id="container" #ripple="matRipple" mat-ripple [matRippleSpeedFactor]="0"
          style="position: relative; width:300px; height:200px;">
     </div>
   `,
 })
 class BasicRippleContainer {
-  @ViewChild('ripple') ripple: MdRipple;
+  @ViewChild('ripple') ripple: MatRipple;
 }
 
 @Component({
   template: `
     <div id="container" style="position: relative; width:300px; height:200px;"
       mat-ripple
-      [mdRippleSpeedFactor]="0"
-      [mdRippleTrigger]="trigger"
-      [mdRippleCentered]="centered"
-      [mdRippleRadius]="radius"
-      [mdRippleDisabled]="disabled"
-      [mdRippleColor]="color">
+      [matRippleSpeedFactor]="0"
+      [matRippleTrigger]="trigger"
+      [matRippleCentered]="centered"
+      [matRippleRadius]="radius"
+      [matRippleDisabled]="disabled"
+      [matRippleColor]="color">
     </div>
     <div class="alternateTrigger"></div>
   `,
 })
 class RippleContainerWithInputBindings {
-  trigger: HTMLElement = null;
+  trigger: HTMLElement;
   centered = false;
   disabled = false;
   radius = 0;
   color = '';
-  @ViewChild(MdRipple) ripple: MdRipple;
+  @ViewChild(MatRipple) ripple: MatRipple;
 }
 
-@Component({ template: `<div id="container" mat-ripple [mdRippleSpeedFactor]="0"
+@Component({
+  template: `<div id="container" #ripple="matRipple" mat-ripple></div>`,
+})
+class RippleContainerWithoutBindings {}
+
+@Component({ template: `<div id="container" mat-ripple [matRippleSpeedFactor]="0"
                              *ngIf="!isDestroyed"></div>` })
 class RippleContainerWithNgIf {
-  @ViewChild(MdRipple) ripple: MdRipple;
+  @ViewChild(MatRipple) ripple: MatRipple;
   isDestroyed = false;
 }

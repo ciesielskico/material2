@@ -1,24 +1,9 @@
-import {NgModule, ModuleWithProviders} from '@angular/core';
-import {OverlayModule, CompatibilityModule} from '../core';
-import {PlatformModule} from '../core/platform/index';
-import {MdTooltip, TooltipComponent} from './tooltip';
+/**
+ * @license
+ * Copyright Google LLC All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
 
-
-@NgModule({
-  imports: [OverlayModule, CompatibilityModule, PlatformModule],
-  exports: [MdTooltip, TooltipComponent, CompatibilityModule],
-  declarations: [MdTooltip, TooltipComponent],
-  entryComponents: [TooltipComponent],
-})
-export class MdTooltipModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdTooltipModule,
-      providers: []
-    };
-  }
-}
-
-
-export * from './tooltip';
+export * from './public-api';

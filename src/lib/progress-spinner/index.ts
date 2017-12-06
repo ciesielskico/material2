@@ -1,35 +1,9 @@
-import {NgModule, ModuleWithProviders} from '@angular/core';
-import {CompatibilityModule} from '../core';
-import {
-  MdProgressSpinner,
-  MdSpinner,
-  MdProgressSpinnerCssMatStyler,
-} from './progress-spinner';
+/**
+ * @license
+ * Copyright Google LLC All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
 
-
-@NgModule({
-  imports: [CompatibilityModule],
-  exports: [
-    MdProgressSpinner,
-    MdSpinner,
-    CompatibilityModule,
-    MdProgressSpinnerCssMatStyler
-  ],
-  declarations: [
-    MdProgressSpinner,
-    MdSpinner,
-    MdProgressSpinnerCssMatStyler
-  ],
-})
-class MdProgressSpinnerModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdProgressSpinnerModule,
-      providers: []
-    };
-  }
-}
-
-export {MdProgressSpinnerModule};
-export * from './progress-spinner';
+export * from './public-api';

@@ -1,25 +1,9 @@
-import {NgModule, ModuleWithProviders} from '@angular/core';
-import {HttpModule} from '@angular/http';
-import {CompatibilityModule} from '../core';
-import {MdIcon, ICON_REGISTRY_PROVIDER} from './icon';
+/**
+ * @license
+ * Copyright Google LLC All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
 
-
-@NgModule({
-  imports: [HttpModule, CompatibilityModule],
-  exports: [MdIcon, CompatibilityModule],
-  declarations: [MdIcon],
-  providers: [ICON_REGISTRY_PROVIDER],
-})
-export class MdIconModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdIconModule,
-      providers: [],
-    };
-  }
-}
-
-
-export * from './icon';
-export {MdIconRegistry} from './icon-registry';
+export * from './public-api';

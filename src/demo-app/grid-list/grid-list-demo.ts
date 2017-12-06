@@ -1,13 +1,19 @@
+/**
+ * @license
+ * Copyright Google LLC All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
+
 import {Component} from '@angular/core';
-import {MdIconRegistry} from '@angular/material';
 
 
 @Component({
   moduleId: module.id,
   selector: 'grid-list-demo',
   templateUrl: 'grid-list-demo.html',
-  styleUrls: ['grid-list-demo.css'],
-  providers: [MdIconRegistry]
+  styleUrls: ['grid-list-demo.css']
 })
 export class GridListDemo {
   tiles: any[] = [

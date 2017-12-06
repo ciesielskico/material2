@@ -1,53 +1,9 @@
-import {ModuleWithProviders, NgModule} from '@angular/core';
-import {CommonModule} from '@angular/common';
-import {CompatibilityModule, MdRippleModule, StyleModule} from '../core';
-import {
-  MdAnchor,
-  MdButton,
-  MdButtonCssMatStyler,
-  MdFabCssMatStyler,
-  MdIconButtonCssMatStyler,
-  MdMiniFabCssMatStyler,
-  MdRaisedButtonCssMatStyler
-} from './button';
+/**
+ * @license
+ * Copyright Google LLC All Rights Reserved.
+ *
+ * Use of this source code is governed by an MIT-style license that can be
+ * found in the LICENSE file at https://angular.io/license
+ */
 
-
-export * from './button';
-
-
-@NgModule({
-  imports: [
-    CommonModule,
-    MdRippleModule,
-    CompatibilityModule,
-    StyleModule,
-  ],
-  exports: [
-    MdButton,
-    MdAnchor,
-    CompatibilityModule,
-    MdButtonCssMatStyler,
-    MdRaisedButtonCssMatStyler,
-    MdIconButtonCssMatStyler,
-    MdFabCssMatStyler,
-    MdMiniFabCssMatStyler,
-  ],
-  declarations: [
-    MdButton,
-    MdAnchor,
-    MdButtonCssMatStyler,
-    MdRaisedButtonCssMatStyler,
-    MdIconButtonCssMatStyler,
-    MdFabCssMatStyler,
-    MdMiniFabCssMatStyler,
-  ],
-})
-export class MdButtonModule {
-  /** @deprecated */
-  static forRoot(): ModuleWithProviders {
-    return {
-      ngModule: MdButtonModule,
-      providers: []
-    };
-  }
-}
+export * from './public-api';
